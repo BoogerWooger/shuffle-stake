@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBaseV2.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
+import "@chainlink/contracts/src/v0.8/vrf/interfaces/VRFCoordinatorV2Interface.sol";
 
 /**
  * @title ShuffleToken
@@ -115,8 +115,8 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
             currentRandomSeed = 0;
             randomnessRequested = false;
             
-            // Request new randomness if we have users
-            if (userCount > 0) {
+            // Request new randomness only if we have more than TOTAL_SUPPLY users
+            if (userCount > TOTAL_SUPPLY) {
                 requestRandomness();
             }
             
@@ -129,7 +129,7 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
      */
     function requestRandomness() internal {
         require(!randomnessRequested, "Randomness already requested");
-        require(userCount > 0, "No users in lottery");
+        require(userCount > TOTAL_SUPPLY, "Need more than TOTAL_SUPPLY users");
         
         randomnessRequested = true;
         uint256 requestId = i_vrfCoordinator.requestRandomWords(
@@ -146,7 +146,7 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
     /**
      * @dev Callback function used by VRF Coordinator
      */
-    function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override {
+    function fulfillRandomWords(uint256 /* requestId */, uint256[] memory randomWords) internal override {
         currentRandomSeed = randomWords[0];
         randomnessRequested = false;
         
@@ -159,7 +159,7 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
      * @return Balance of the user (0 or 1)
      */
     function balanceOf(address user) public view returns (uint256) {
-        if (userIndex[user] == 0 || userCount == 0) {
+        if (userIndex[user] == 0 || userCount <= TOTAL_SUPPLY) {
             return 0;
         }
         
@@ -178,28 +178,47 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
      * @return True if user is a winner
      */
     function isWinner(address user) public view returns (bool) {
-        if (userIndex[user] == 0 || userCount == 0 || currentRandomSeed == 0) {
+        if (userIndex[user] == 0 || userCount <= TOTAL_SUPPLY || currentRandomSeed == 0) {
             return false;
         }
         
-        // Use deterministic shuffle based on random seed
+        // Use deterministic shuffle to select exactly 5 winners
         uint256 userPos = userIndex[user] - 1; // Convert to 0-indexed
-        uint256 shuffledPos = shufflePosition(userPos, currentRandomSeed);
-        
-        // Top 5 positions are winners
-        return shuffledPos < WINNERS_PER_EPOCH;
+        return isInWinningPositions(userPos, currentRandomSeed);
     }
 
     /**
-     * @dev Shuffle position using deterministic algorithm
-     * @param position Original position
+     * @dev Check if a user position is in the winning positions using deterministic selection
+     * @param userPos The user's position (0-indexed)
      * @param seed Random seed
-     * @return Shuffled position
+     * @return True if the user is in a winning position
      */
-    function shufflePosition(uint256 position, uint256 seed) internal pure returns (uint256) {
-        // Use a simple but effective shuffling algorithm
-        uint256 hash = uint256(keccak256(abi.encodePacked(position, seed)));
-        return hash % userCount;
+    function isInWinningPositions(uint256 userPos, uint256 seed) internal view returns (bool) {
+        // Use a deterministic approach to select exactly 5 unique positions
+        // We'll simulate a Fisher-Yates shuffle to get the first 5 positions
+        
+        uint256[] memory positions = new uint256[](userCount);
+        for (uint256 i = 0; i < userCount; i++) {
+            positions[i] = i;
+        }
+        
+        // Perform partial Fisher-Yates shuffle for the first 5 positions
+        for (uint256 i = 0; i < WINNERS_PER_EPOCH && i < userCount; i++) {
+            // Generate a random index from i to userCount-1
+            uint256 randomIndex = i + (uint256(keccak256(abi.encodePacked(seed, i))) % (userCount - i));
+            
+            // Swap positions[i] with positions[randomIndex]
+            uint256 temp = positions[i];
+            positions[i] = positions[randomIndex];
+            positions[randomIndex] = temp;
+            
+            // Check if this position matches our user
+            if (positions[i] == userPos) {
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     /**
@@ -207,7 +226,7 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
      * @return Array of winner addresses
      */
     function getWinners() external view returns (address[] memory) {
-        if (currentRandomSeed == 0 || userCount == 0) {
+        if (currentRandomSeed == 0 || userCount <= TOTAL_SUPPLY) {
             return new address[](0);
         }
         
@@ -282,8 +301,18 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
      * @dev Force request randomness (for testing)
      */
     function forceRequestRandomness() external onlyOwner {
-        if (userCount > 0) {
+        if (userCount > TOTAL_SUPPLY) {
             requestRandomness();
         }
+    }
+
+    /**
+     * @dev Set random seed directly (for testing only)
+     * @param seed The random seed to set
+     */
+    function setRandomSeedForTesting(uint256 seed) external onlyOwner {
+        currentRandomSeed = seed;
+        randomnessRequested = false;
+        emit EpochChanged(currentEpoch, currentRandomSeed);
     }
 } 

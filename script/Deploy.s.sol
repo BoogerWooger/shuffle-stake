@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {ShuffleToken} from "../src/ShuffleStakeToken.sol";
@@ -11,14 +11,14 @@ contract DeployScript is Script {
         
         // VRF Configuration - these should be set based on the network
         address vrfCoordinator = vm.envAddress("VRF_COORDINATOR");
-        uint64 subscriptionId = vm.envUint64("SUBSCRIPTION_ID");
+        uint64 subscriptionId = uint64(vm.envUint("SUBSCRIPTION_ID"));
         bytes32 gasLane = vm.envBytes32("GAS_LANE");
-        uint32 callbackGasLimit = vm.envUint32("CALLBACK_GAS_LIMIT");
+        uint32 callbackGasLimit = uint32(vm.envUint("CALLBACK_GAS_LIMIT"));
         
         console2.log("Deploying ShuffleToken with address:", deployer);
         console2.log("VRF Coordinator:", vrfCoordinator);
         console2.log("Subscription ID:", subscriptionId);
-        console2.log("Gas Lane:", gasLane);
+        console2.log("Gas Lane (as uint256):", uint256(gasLane));
         console2.log("Callback Gas Limit:", callbackGasLimit);
         
         vm.startBroadcast(deployerPrivateKey);

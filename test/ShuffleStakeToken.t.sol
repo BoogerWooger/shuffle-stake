@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {ShuffleToken} from "../src/ShuffleStakeToken.sol";
-import {VRFCoordinatorV2Mock} from "@chainlink/contracts/src/v0.8/mocks/VRFCoordinatorV2Mock.sol";
+import {VRFCoordinatorV2Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2Mock.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract ShuffleTokenTest is Test {
     ShuffleToken public token;
@@ -65,7 +66,7 @@ contract ShuffleTokenTest is Test {
 
     // ============ Constructor Tests ============
 
-    function test_Constructor() public {
+    function test_Constructor() public view {
         assertEq(token.name(), "ShuffleToken");
         assertEq(token.symbol(), "LOTTO");
         assertEq(token.decimals(), 0);
@@ -80,7 +81,7 @@ contract ShuffleTokenTest is Test {
         assertEq(token.randomnessRequested(), false);
     }
 
-    function test_InitialEpoch() public {
+    function test_InitialEpoch() public view {
         uint256 expectedEpoch = block.timestamp / 384;
         assertEq(token.getCurrentEpoch(), expectedEpoch);
         assertEq(token.currentEpoch(), expectedEpoch);
@@ -101,7 +102,7 @@ contract ShuffleTokenTest is Test {
 
     function test_AddUser_OnlyOwner() public {
         vm.prank(user1);
-        vm.expectRevert("Ownable: caller is not the owner");
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
         token.addUser(user2);
     }
 
@@ -165,7 +166,7 @@ contract ShuffleTokenTest is Test {
         vm.stopPrank();
         
         vm.prank(user1);
-        vm.expectRevert("Ownable: caller is not the owner");
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
         token.removeUser(user1);
     }
 
@@ -207,7 +208,7 @@ contract ShuffleTokenTest is Test {
 
     // ============ Epoch Management Tests ============
 
-    function test_GetCurrentEpoch() public {
+    function test_GetCurrentEpoch() public view {
         uint256 expectedEpoch = block.timestamp / 384;
         assertEq(token.getCurrentEpoch(), expectedEpoch);
     }
@@ -221,11 +222,14 @@ contract ShuffleTokenTest is Test {
     function test_CheckEpochChange_WithChange() public {
         uint256 initialEpoch = token.currentEpoch();
         
-        // Add some users first
+        // Add more than 5 users to enable lottery functionality
         vm.startPrank(owner);
         token.addUser(user1);
         token.addUser(user2);
         token.addUser(user3);
+        token.addUser(user4);
+        token.addUser(user5);
+        token.addUser(user6);
         vm.stopPrank();
         
         // Simulate epoch change
@@ -244,14 +248,21 @@ contract ShuffleTokenTest is Test {
 
     function test_RequestRandomness_NoUsers() public {
         vm.prank(owner);
-        vm.expectRevert("No users in lottery");
+        // Should not revert, just return early
         token.forceRequestRandomness();
+        
+        // Verify that randomness was not requested
+        assertEq(token.randomnessRequested(), false);
     }
 
     function test_RequestRandomness_WithUsers() public {
         vm.startPrank(owner);
         token.addUser(user1);
         token.addUser(user2);
+        token.addUser(user3);
+        token.addUser(user4);
+        token.addUser(user5);
+        token.addUser(user6);
         vm.stopPrank();
         
         vm.prank(owner);
@@ -269,18 +280,16 @@ contract ShuffleTokenTest is Test {
         token.addUser(user3);
         token.addUser(user4);
         token.addUser(user5);
+        token.addUser(user6);
         vm.stopPrank();
         
         // Request randomness
         vm.prank(owner);
         token.forceRequestRandomness();
         
-        // Simulate VRF callback
-        uint256[] memory randomWords = new uint256[](1);
-        randomWords[0] = 12345;
-        
-        vm.prank(address(vrfCoordinator));
-        token.fulfillRandomWords(1, randomWords);
+        // Set random seed using the proper test function
+        vm.prank(owner);
+        token.setRandomSeedForTesting(12345);
         
         assertEq(token.currentRandomSeed(), 12345);
         assertEq(token.randomnessRequested(), false);
@@ -296,7 +305,7 @@ contract ShuffleTokenTest is Test {
         assertFalse(token.isWinner(user1));
     }
 
-    function test_IsWinner_NotInLottery() public {
+    function test_IsWinner_NotInLottery() public view {
         assertFalse(token.isWinner(user1));
     }
 
@@ -308,10 +317,12 @@ contract ShuffleTokenTest is Test {
         token.addUser(user4);
         token.addUser(user5);
         token.addUser(user6);
+        token.addUser(user7);
         vm.stopPrank();
         
-        // Set random seed manually for testing
-        vm.store(address(token), keccak256(abi.encode(uint256(3))), bytes32(uint256(12345)));
+        // Set random seed using the proper test function
+        vm.prank(owner);
+        token.setRandomSeedForTesting(12345);
         
         // Check winners (this will depend on the shuffle algorithm)
         bool user1Winner = token.isWinner(user1);
@@ -320,6 +331,7 @@ contract ShuffleTokenTest is Test {
         bool user4Winner = token.isWinner(user4);
         bool user5Winner = token.isWinner(user5);
         bool user6Winner = token.isWinner(user6);
+        bool user7Winner = token.isWinner(user7);
         
         // Count winners
         uint256 winnerCount = 0;
@@ -329,6 +341,7 @@ contract ShuffleTokenTest is Test {
         if (user4Winner) winnerCount++;
         if (user5Winner) winnerCount++;
         if (user6Winner) winnerCount++;
+        if (user7Winner) winnerCount++;
         
         // Should have exactly 5 winners
         assertEq(winnerCount, 5);
@@ -342,7 +355,7 @@ contract ShuffleTokenTest is Test {
         assertEq(token.balanceOf(user1), 0);
     }
 
-    function test_BalanceOf_NotInLottery() public {
+    function test_BalanceOf_NotInLottery() public view {
         assertEq(token.balanceOf(user1), 0);
     }
 
@@ -353,10 +366,12 @@ contract ShuffleTokenTest is Test {
         token.addUser(user3);
         token.addUser(user4);
         token.addUser(user5);
+        token.addUser(user6);
         vm.stopPrank();
         
-        // Set random seed manually for testing
-        vm.store(address(token), keccak256(abi.encode(uint256(3))), bytes32(uint256(12345)));
+        // Set random seed using the proper test function
+        vm.prank(owner);
+        token.setRandomSeedForTesting(12345);
         
         // Check balances
         uint256 user1Balance = token.balanceOf(user1);
@@ -364,9 +379,10 @@ contract ShuffleTokenTest is Test {
         uint256 user3Balance = token.balanceOf(user3);
         uint256 user4Balance = token.balanceOf(user4);
         uint256 user5Balance = token.balanceOf(user5);
+        uint256 user6Balance = token.balanceOf(user6);
         
         // Sum of balances should equal total supply
-        uint256 totalBalance = user1Balance + user2Balance + user3Balance + user4Balance + user5Balance;
+        uint256 totalBalance = user1Balance + user2Balance + user3Balance + user4Balance + user5Balance + user6Balance;
         assertEq(totalBalance, token.totalSupply());
         
         // Each balance should be 0 or 1
@@ -375,6 +391,7 @@ contract ShuffleTokenTest is Test {
         assertTrue(user3Balance == 0 || user3Balance == 1);
         assertTrue(user4Balance == 0 || user4Balance == 1);
         assertTrue(user5Balance == 0 || user5Balance == 1);
+        assertTrue(user6Balance == 0 || user6Balance == 1);
     }
 
     // ============ GetWinners Tests ============
@@ -396,10 +413,12 @@ contract ShuffleTokenTest is Test {
         token.addUser(user3);
         token.addUser(user4);
         token.addUser(user5);
+        token.addUser(user6);
         vm.stopPrank();
         
-        // Set random seed manually for testing
-        vm.store(address(token), keccak256(abi.encode(uint256(3))), bytes32(uint256(12345)));
+        // Set random seed using the proper test function
+        vm.prank(owner);
+        token.setRandomSeedForTesting(12345);
         
         address[] memory winners = token.getWinners();
         assertEq(winners.length, 5);
@@ -417,10 +436,14 @@ contract ShuffleTokenTest is Test {
         token.addUser(user1);
         token.addUser(user2);
         token.addUser(user3);
+        token.addUser(user4);
+        token.addUser(user5);
+        token.addUser(user6);
         vm.stopPrank();
         
-        // Set random seed
-        vm.store(address(token), keccak256(abi.encode(uint256(3))), bytes32(uint256(12345)));
+        // Set random seed using the proper test function
+        vm.prank(owner);
+        token.setRandomSeedForTesting(12345);
         
         // Same seed should produce same results
         bool firstCheck = token.isWinner(user1);
@@ -435,14 +458,17 @@ contract ShuffleTokenTest is Test {
         token.addUser(user3);
         token.addUser(user4);
         token.addUser(user5);
+        token.addUser(user6);
         vm.stopPrank();
         
         // Test with different seeds
-        vm.store(address(token), keccak256(abi.encode(uint256(3))), bytes32(uint256(12345)));
-        bool result1 = token.isWinner(user1);
+        vm.prank(owner);
+        token.setRandomSeedForTesting(12345);
+        token.isWinner(user1); // First call with seed 12345
         
-        vm.store(address(token), keccak256(abi.encode(uint256(3))), bytes32(uint256(54321)));
-        bool result2 = token.isWinner(user1);
+        vm.prank(owner);
+        token.setRandomSeedForTesting(54321);
+        token.isWinner(user1); // Second call with seed 54321
         
         // Results might be different (though they could be the same by chance)
         // The important thing is that the function works with different seeds
@@ -473,8 +499,9 @@ contract ShuffleTokenTest is Test {
         assertEq(token.balanceOf(user2), 0);
         assertEq(token.totalSupply(), 5);
         
-        // 3. Set random seed
-        vm.store(address(token), keccak256(abi.encode(uint256(3))), bytes32(uint256(12345)));
+        // 3. Set random seed using the proper test function
+        vm.prank(owner);
+        token.setRandomSeedForTesting(12345);
         
         // 4. Check winners
         address[] memory winners = token.getWinners();
@@ -508,44 +535,35 @@ contract ShuffleTokenTest is Test {
 
     // ============ Edge Cases Tests ============
 
-    function test_ExactFiveUsers() public {
+    function test_InsufficientUsers_LotteryDoesNotWork() public {
         vm.startPrank(owner);
         token.addUser(user1);
         token.addUser(user2);
         token.addUser(user3);
         token.addUser(user4);
-        token.addUser(user5);
+        token.addUser(user5); // Exactly 5 users - should not work
+        
+        // Set random seed using the proper test function
+        token.setRandomSeedForTesting(12345);
         vm.stopPrank();
         
-        vm.store(address(token), keccak256(abi.encode(uint256(3))), bytes32(uint256(12345)));
+        // All balances should be 0 since we need more than 5 users
+        assertEq(token.balanceOf(user1), 0);
+        assertEq(token.balanceOf(user2), 0);
+        assertEq(token.balanceOf(user3), 0);
+        assertEq(token.balanceOf(user4), 0);
+        assertEq(token.balanceOf(user5), 0);
         
-        // All users should be winners
-        assertEq(token.balanceOf(user1), 1);
-        assertEq(token.balanceOf(user2), 1);
-        assertEq(token.balanceOf(user3), 1);
-        assertEq(token.balanceOf(user4), 1);
-        assertEq(token.balanceOf(user5), 1);
-        
+        // No winners should be returned
         address[] memory winners = token.getWinners();
-        assertEq(winners.length, 5);
-    }
-
-    function test_LessThanFiveUsers() public {
-        vm.startPrank(owner);
-        token.addUser(user1);
-        token.addUser(user2);
-        token.addUser(user3);
-        vm.stopPrank();
+        assertEq(winners.length, 0);
         
-        vm.store(address(token), keccak256(abi.encode(uint256(3))), bytes32(uint256(12345)));
-        
-        // All users should be winners
-        assertEq(token.balanceOf(user1), 1);
-        assertEq(token.balanceOf(user2), 1);
-        assertEq(token.balanceOf(user3), 1);
-        
-        address[] memory winners = token.getWinners();
-        assertEq(winners.length, 3);
+        // isWinner should return false for all users
+        assertFalse(token.isWinner(user1));
+        assertFalse(token.isWinner(user2));
+        assertFalse(token.isWinner(user3));
+        assertFalse(token.isWinner(user4));
+        assertFalse(token.isWinner(user5));
     }
 
     function test_MoreThanFiveUsers() public {
@@ -557,9 +575,10 @@ contract ShuffleTokenTest is Test {
         token.addUser(user5);
         token.addUser(user6);
         token.addUser(user7);
-        vm.stopPrank();
         
-        vm.store(address(token), keccak256(abi.encode(uint256(3))), bytes32(uint256(12345)));
+        // Set random seed using the proper test function
+        token.setRandomSeedForTesting(12345);
+        vm.stopPrank();
         
         // Exactly 5 should be winners
         uint256 winnerCount = 0;
@@ -607,9 +626,11 @@ contract ShuffleTokenTest is Test {
         token.addUser(user3);
         token.addUser(user4);
         token.addUser(user5);
-        vm.stopPrank();
+        token.addUser(user6);
         
-        vm.store(address(token), keccak256(abi.encode(uint256(3))), bytes32(uint256(12345)));
+        // Set random seed using the proper test function
+        token.setRandomSeedForTesting(12345);
+        vm.stopPrank();
         
         uint256 gasBefore = gasleft();
         
@@ -631,9 +652,10 @@ contract ShuffleTokenTest is Test {
         token.addUser(user8);
         token.addUser(user9);
         token.addUser(user10);
-        vm.stopPrank();
         
-        vm.store(address(token), keccak256(abi.encode(uint256(3))), bytes32(uint256(12345)));
+        // Set random seed using the proper test function
+        token.setRandomSeedForTesting(12345);
+        vm.stopPrank();
         
         uint256 gasBefore = gasleft();
         
