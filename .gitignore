@@ -1,15 +1,43 @@
-# Remix compiler artifacts
-**/artifacts/
-**/artifacts/**
+# Dependencies
+node_modules/
+lib/
 
-# Remix plugin state folders
-deps/
-states/
+# Foundry
+out/
+cache/
+broadcast/
 
-# Debug info
-*.dbg.json
-*.tsbuildinfo
-
-# Optional
+# Environment variables
 .env
 .env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Coverage
+lcov.info
+coverage/
+
+# Gas reports
+gas-report.txt
+
+# Ignores development broadcast logs
+!/broadcast
+/broadcast/*/31337/
+/broadcast/**/dry-run/
+
+# Docs
+docs/
