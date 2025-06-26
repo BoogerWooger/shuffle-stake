@@ -4,7 +4,7 @@ A complete Foundry/Forge project boilerplate featuring a lottery token that dist
 
 ## Features
 
-- **LotteryToken Contract**: A lottery system that distributes tokens to random winners each epoch
+- **ShuffleToken Contract**: A lottery system that distributes tokens to random winners each epoch
 - **Chainlink VRF Integration**: Provably fair randomness using Chainlink VRF
 - **Epoch-based Distribution**: New winners selected every Ethereum epoch (384 seconds)
 - **Dynamic Balance Calculation**: Balances calculated on-the-fly using shuffle-or-not algorithm
@@ -14,7 +14,7 @@ A complete Foundry/Forge project boilerplate featuring a lottery token that dist
 
 ## Contract Features
 
-### LotteryToken.sol
+### ShuffleToken.sol
 - **Epoch-based Lottery**: Distributes 5 tokens to 5 random users each epoch
 - **Chainlink VRF**: Uses Chainlink VRF for provably fair randomness
 - **Dynamic Balances**: Balances calculated dynamically without storage
@@ -127,13 +127,13 @@ forge coverage
 
 ### Verify Contract
 ```bash
-forge verify-contract <contract_address> src/ShuffleStakeToken.sol:LotteryToken --chain-id <chain_id>
+forge verify-contract <contract_address> src/ShuffleStakeToken.sol:ShuffleToken --chain-id <chain_id>
 ```
 
 ## Contract Functions
 
 ### Public Functions
-- `name()` - Returns token name ("LotteryToken")
+- `name()` - Returns token name ("ShuffleToken")
 - `symbol()` - Returns token symbol ("LOTTO")
 - `decimals()` - Returns token decimals (0)
 - `totalSupply()` - Returns total supply (always 5)

@@ -2,11 +2,11 @@
 pragma solidity ^0.8.19;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {LotteryToken} from "../src/ShuffleStakeToken.sol";
+import {ShuffleToken} from "../src/ShuffleStakeToken.sol";
 import {VRFCoordinatorV2Mock} from "@chainlink/contracts/src/v0.8/mocks/VRFCoordinatorV2Mock.sol";
 
-contract LotteryTokenInvariantTest is Test {
-    LotteryToken public token;
+contract ShuffleTokenInvariantTest is Test {
+    ShuffleToken public token;
     VRFCoordinatorV2Mock public vrfCoordinator;
     address public owner;
     address public user1;
@@ -46,7 +46,7 @@ contract LotteryTokenInvariantTest is Test {
         vrfCoordinator.fundSubscription(subscriptionId, 1000000000000000000);
 
         vm.startPrank(owner);
-        token = new LotteryToken(
+        token = new ShuffleToken(
             address(vrfCoordinator),
             subscriptionId,
             gasLane,

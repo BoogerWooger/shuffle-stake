@@ -121,7 +121,7 @@ verify:
 		echo "Error: CHAIN_ID environment variable not set"; \
 		exit 1; \
 	fi
-	forge verify-contract $$CONTRACT_ADDRESS src/ShuffleStakeToken.sol:LotteryToken --chain-id $$CHAIN_ID
+	forge verify-contract $$CONTRACT_ADDRESS src/ShuffleStakeToken.sol:ShuffleToken --chain-id $$CHAIN_ID
 
 # Run interaction script
 interact:

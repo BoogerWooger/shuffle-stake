@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {LotteryToken} from "../src/ShuffleStakeToken.sol";
+import {ShuffleToken} from "../src/ShuffleStakeToken.sol";
 
 contract InteractScript is Script {
     function run() external {
@@ -21,7 +21,7 @@ contract InteractScript is Script {
             uint32 callbackGasLimit = vm.envOr("CALLBACK_GAS_LIMIT", uint32(500000));
             
             vm.startBroadcast(deployerPrivateKey);
-            LotteryToken token = new LotteryToken(
+            ShuffleToken token = new ShuffleToken(
                 vrfCoordinator,
                 subscriptionId,
                 gasLane,
@@ -36,7 +36,7 @@ contract InteractScript is Script {
         }
 
         // Get the token contract instance
-        LotteryToken token = LotteryToken(contractAddress);
+        ShuffleToken token = ShuffleToken(contractAddress);
         
         // Get deployer address
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");

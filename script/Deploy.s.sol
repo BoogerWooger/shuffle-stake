@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {LotteryToken} from "../src/ShuffleStakeToken.sol";
+import {ShuffleToken} from "../src/ShuffleStakeToken.sol";
 
 contract DeployScript is Script {
     function run() external {
@@ -15,7 +15,7 @@ contract DeployScript is Script {
         bytes32 gasLane = vm.envBytes32("GAS_LANE");
         uint32 callbackGasLimit = vm.envUint32("CALLBACK_GAS_LIMIT");
         
-        console2.log("Deploying LotteryToken with address:", deployer);
+        console2.log("Deploying ShuffleToken with address:", deployer);
         console2.log("VRF Coordinator:", vrfCoordinator);
         console2.log("Subscription ID:", subscriptionId);
         console2.log("Gas Lane:", gasLane);
@@ -23,7 +23,7 @@ contract DeployScript is Script {
         
         vm.startBroadcast(deployerPrivateKey);
         
-        LotteryToken token = new LotteryToken(
+        ShuffleToken token = new ShuffleToken(
             vrfCoordinator,
             subscriptionId,
             gasLane,
@@ -32,7 +32,7 @@ contract DeployScript is Script {
         
         vm.stopBroadcast();
         
-        console2.log("LotteryToken deployed at:", address(token));
+        console2.log("ShuffleToken deployed at:", address(token));
         console2.log("Token name:", token.name());
         console2.log("Token symbol:", token.symbol());
         console2.log("Total supply:", token.totalSupply());

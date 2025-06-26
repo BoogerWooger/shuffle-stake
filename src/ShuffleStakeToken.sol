@@ -6,10 +6,10 @@ import "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBaseV2.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 
 /**
- * @title LotteryToken
+ * @title ShuffleToken
  * @dev A lottery token that distributes 5 tokens to 5 random users each epoch
  */
-contract LotteryToken is Ownable, VRFConsumerBaseV2 {
+contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
     // Chainlink VRF variables
     VRFCoordinatorV2Interface private immutable i_vrfCoordinator;
     uint64 private immutable i_subscriptionId;
@@ -240,7 +240,7 @@ contract LotteryToken is Ownable, VRFConsumerBaseV2 {
      * @dev Get token name
      */
     function name() external pure returns (string memory) {
-        return "LotteryToken";
+        return "ShuffleToken";
     }
 
     /**
