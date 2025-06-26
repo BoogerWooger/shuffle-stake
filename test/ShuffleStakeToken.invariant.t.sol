@@ -102,8 +102,8 @@ contract ShuffleTokenInvariantTest is Test {
         }
     }
 
-    // Invariant: Number of winners should not exceed 5
-    function invariant_WinnerCountNotExceedFive() public view {
+    // Invariant: Number of winners should be exactly 5 when sufficient users and randomness
+    function invariant_WinnerCountExactlyFive() public view {
         if (token.currentRandomSeed() == 0 || token.getUserCount() <= 5) {
             return; // No randomness or insufficient users
         }
@@ -115,7 +115,7 @@ contract ShuffleTokenInvariantTest is Test {
                 winnerCount++;
             }
         }
-        assertLe(winnerCount, 5, "Winner count exceeds 5");
+        assertEq(winnerCount, 5, "Winner count should be exactly 5");
     }
 
     // Invariant: Token name and symbol should never be empty

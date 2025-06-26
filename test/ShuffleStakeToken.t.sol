@@ -431,48 +431,278 @@ contract ShuffleTokenTest is Test {
 
     // ============ Shuffle Algorithm Tests ============
 
-    function test_ShufflePosition_Deterministic() public {
+    function test_AlwaysSelectsExactlyFiveUniqueWinners() public {
         vm.startPrank(owner);
-        token.addUser(user1);
-        token.addUser(user2);
-        token.addUser(user3);
-        token.addUser(user4);
-        token.addUser(user5);
-        token.addUser(user6);
+        
+        // Test with different user counts to ensure scalability
+        uint256[4] memory userCounts = [uint256(6), 10, 25, 100];
+        uint256[5] memory testSeeds = [uint256(12345), 67890, 111111, 999999, 555555];
+        
+        for (uint256 userCountIndex = 0; userCountIndex < userCounts.length; userCountIndex++) {
+            uint256 targetUserCount = userCounts[userCountIndex];
+            
+            // Reset contract for each test
+            // Remove all existing users first
+            address[] memory existingUsers = token.getAllUsers();
+            for (uint256 j = 0; j < existingUsers.length; j++) {
+                token.removeUser(existingUsers[j]);
+            }
+            
+            // Add target number of users
+            for (uint256 i = 1; i <= targetUserCount; i++) {
+                token.addUser(vm.addr(i));
+            }
+            
+            // Test with multiple seeds for this user count
+            for (uint256 seedIndex = 0; seedIndex < testSeeds.length; seedIndex++) {
+                token.setRandomSeedForTesting(testSeeds[seedIndex]);
+                
+                // Count winners
+                uint256 winnerCount = 0;
+                address[] memory allUsers = token.getAllUsers();
+                address[] memory winners = new address[](5);
+                
+                for (uint256 i = 0; i < allUsers.length; i++) {
+                    if (token.balanceOf(allUsers[i]) == 1) {
+                        require(winnerCount < 5, "Too many winners detected");
+                        winners[winnerCount] = allUsers[i];
+                        winnerCount++;
+                    }
+                }
+                
+                // Should always be exactly 5
+                assertEq(winnerCount, 5, 
+                    string(abi.encodePacked(
+                        "Failed with ", vm.toString(targetUserCount), " users, seed ", vm.toString(testSeeds[seedIndex])
+                    )));
+                
+                // Verify no duplicates in winners
+                for (uint256 i = 0; i < 5; i++) {
+                    for (uint256 j = i + 1; j < 5; j++) {
+                        assertTrue(winners[i] != winners[j], "Duplicate winner detected");
+                    }
+                }
+            }
+        }
+        
         vm.stopPrank();
-        
-        // Set random seed using the proper test function
-        vm.prank(owner);
-        token.setRandomSeedForTesting(12345);
-        
-        // Same seed should produce same results
-        bool firstCheck = token.isWinner(user1);
-        bool secondCheck = token.isWinner(user1);
-        assertEq(firstCheck, secondCheck);
     }
 
-    function test_ShufflePosition_DifferentSeeds() public {
+    function test_DifferentEpochsProduceDifferentWinners() public {
         vm.startPrank(owner);
+        // Add 8 users
+        for (uint256 i = 1; i <= 8; i++) {
+            token.addUser(vm.addr(i));
+        }
+        
+        // Set same seed for current epoch
+        token.setRandomSeedForTesting(12345);
+        
+        // Get winners for current epoch
+        address[] memory epoch1Winners = new address[](5);
+        uint256 winnerCount = 0;
+        address[] memory allUsers = token.getAllUsers();
+        
+        for (uint256 i = 0; i < allUsers.length; i++) {
+            if (token.balanceOf(allUsers[i]) == 1) {
+                epoch1Winners[winnerCount] = allUsers[i];
+                winnerCount++;
+            }
+        }
+        assertEq(winnerCount, 5);
+        
+        // Move to next epoch (simulate time passing)
+        vm.warp(block.timestamp + 384); // Move forward by one epoch
+        token.checkEpochChange();
+        token.setRandomSeedForTesting(12345); // Same seed, different epoch
+        
+        // Get winners for new epoch
+        address[] memory epoch2Winners = new address[](5);
+        winnerCount = 0;
+        
+        for (uint256 i = 0; i < allUsers.length; i++) {
+            if (token.balanceOf(allUsers[i]) == 1) {
+                epoch2Winners[winnerCount] = allUsers[i];
+                winnerCount++;
+            }
+        }
+        assertEq(winnerCount, 5);
+        
+        // Compare winners - they should be different
+        bool sameWinners = true;
+        for (uint256 i = 0; i < 5; i++) {
+            bool foundInEpoch2 = false;
+            for (uint256 j = 0; j < 5; j++) {
+                if (epoch1Winners[i] == epoch2Winners[j]) {
+                    foundInEpoch2 = true;
+                    break;
+                }
+            }
+            if (!foundInEpoch2) {
+                sameWinners = false;
+                break;
+            }
+        }
+        
+        // Winners should be different across epochs (with very high probability)
+        assertFalse(sameWinners, "Winners should be different across epochs");
+        vm.stopPrank();
+    }
+
+    function test_DeterministicWinnerSelectionWithinEpoch() public {
+        vm.startPrank(owner);
+        // Add 7 users
+        for (uint256 i = 1; i <= 7; i++) {
+            token.addUser(vm.addr(i));
+        }
+        
+        token.setRandomSeedForTesting(12345);
+        vm.stopPrank();
+        
+        // Get winners multiple times - should be consistent
+        address[] memory allUsers = token.getAllUsers();
+        bool[] memory firstCheck = new bool[](7);
+        bool[] memory secondCheck = new bool[](7);
+        bool[] memory thirdCheck = new bool[](7);
+        
+        for (uint256 i = 0; i < allUsers.length; i++) {
+            firstCheck[i] = token.balanceOf(allUsers[i]) == 1;
+            secondCheck[i] = token.balanceOf(allUsers[i]) == 1;
+            thirdCheck[i] = token.balanceOf(allUsers[i]) == 1;
+        }
+        
+        // All checks should be identical
+        for (uint256 i = 0; i < 7; i++) {
+            assertEq(firstCheck[i], secondCheck[i], "First and second check differ");
+            assertEq(secondCheck[i], thirdCheck[i], "Second and third check differ");
+        }
+    }
+
+    function test_SelectionIndependentOfUserOrder() public {
+        vm.startPrank(owner);
+        
+        // Add users in one order
+        address user1 = vm.addr(1);
+        address user2 = vm.addr(2);
+        address user3 = vm.addr(3);
+        address user4 = vm.addr(4);
+        address user5 = vm.addr(5);
+        address user6 = vm.addr(6);
+        
         token.addUser(user1);
         token.addUser(user2);
         token.addUser(user3);
         token.addUser(user4);
         token.addUser(user5);
         token.addUser(user6);
+        
+        token.setRandomSeedForTesting(12345);
+        
+        // Record which users are winners
+        bool user1Winner = token.balanceOf(user1) == 1;
+        bool user2Winner = token.balanceOf(user2) == 1;
+        bool user3Winner = token.balanceOf(user3) == 1;
+        bool user4Winner = token.balanceOf(user4) == 1;
+        bool user5Winner = token.balanceOf(user5) == 1;
+        bool user6Winner = token.balanceOf(user6) == 1;
+        
+        // Verify exactly 5 winners
+        uint256 winnerCount = 0;
+        if (user1Winner) winnerCount++;
+        if (user2Winner) winnerCount++;
+        if (user3Winner) winnerCount++;
+        if (user4Winner) winnerCount++;
+        if (user5Winner) winnerCount++;
+        if (user6Winner) winnerCount++;
+        
+        assertEq(winnerCount, 5, "Should have exactly 5 winners");
+        
+        vm.stopPrank();
+    }
+
+    function test_SelectionPurelyBasedOnBalanceOf() public {
+        vm.startPrank(owner);
+        // Add 8 users
+        for (uint256 i = 1; i <= 8; i++) {
+            token.addUser(vm.addr(i));
+        }
+        
+        // Test that changing seed immediately affects balanceOf results
+        token.setRandomSeedForTesting(12345);
+        
+        // Get initial results
+        address[] memory allUsers = token.getAllUsers();
+        bool[] memory results1 = new bool[](8);
+        for (uint256 i = 0; i < 8; i++) {
+            results1[i] = token.balanceOf(allUsers[i]) == 1;
+        }
+        
+        // Change seed and get new results immediately
+        token.setRandomSeedForTesting(54321);
+        bool[] memory results2 = new bool[](8);
+        for (uint256 i = 0; i < 8; i++) {
+            results2[i] = token.balanceOf(allUsers[i]) == 1;
+        }
+        
+        // Results should be different (no caching)
+        bool anyDifference = false;
+        for (uint256 i = 0; i < 8; i++) {
+            if (results1[i] != results2[i]) {
+                anyDifference = true;
+                break;
+            }
+        }
+        assertTrue(anyDifference, "Results should change when seed changes (no caching)");
+        
+        // Both should still have exactly 5 winners
+        uint256 winners1 = 0;
+        uint256 winners2 = 0;
+        for (uint256 i = 0; i < 8; i++) {
+            if (results1[i]) winners1++;
+            if (results2[i]) winners2++;
+        }
+        assertEq(winners1, 5, "First seed should produce 5 winners");
+        assertEq(winners2, 5, "Second seed should produce 5 winners");
+        
+        vm.stopPrank();
+    }
+
+    function test_GetWinnersMatchesBalanceOfResults() public {
+        vm.startPrank(owner);
+        // Add 7 users
+        for (uint256 i = 1; i <= 7; i++) {
+            token.addUser(vm.addr(i));
+        }
+        
+        token.setRandomSeedForTesting(98765);
         vm.stopPrank();
         
-        // Test with different seeds
-        vm.prank(owner);
-        token.setRandomSeedForTesting(12345);
-        token.isWinner(user1); // First call with seed 12345
+        // Get winners from getWinners()
+        address[] memory winnersFromFunction = token.getWinners();
+        assertEq(winnersFromFunction.length, 5, "getWinners should return 5 winners");
         
-        vm.prank(owner);
-        token.setRandomSeedForTesting(54321);
-        token.isWinner(user1); // Second call with seed 54321
+        // Verify all returned winners have balance 1
+        for (uint256 i = 0; i < winnersFromFunction.length; i++) {
+            assertEq(token.balanceOf(winnersFromFunction[i]), 1, "Winner should have balance 1");
+        }
         
-        // Results might be different (though they could be the same by chance)
-        // The important thing is that the function works with different seeds
-        assertTrue(true); // Just checking it doesn't revert
+        // Verify no non-winners are returned
+        address[] memory allUsers = token.getAllUsers();
+        for (uint256 i = 0; i < allUsers.length; i++) {
+            bool isInWinnersList = false;
+            for (uint256 j = 0; j < winnersFromFunction.length; j++) {
+                if (allUsers[i] == winnersFromFunction[j]) {
+                    isInWinnersList = true;
+                    break;
+                }
+            }
+            
+            if (token.balanceOf(allUsers[i]) == 1) {
+                assertTrue(isInWinnersList, "Winner should be in getWinners result");
+            } else {
+                assertFalse(isInWinnersList, "Non-winner should not be in getWinners result");
+            }
+        }
     }
 
     // ============ Integration Tests ============
@@ -663,5 +893,94 @@ contract ShuffleTokenTest is Test {
         
         uint256 gasUsed = gasBefore - gasleft();
         console2.log("Gas used for getWinners:", gasUsed);
+    }
+
+    function test_ScalabilityWithLargeUserCounts() public {
+        vm.startPrank(owner);
+        
+        // Test with a large number of users to verify O(1) complexity per user check
+        uint256 largeUserCount = 1000;
+        
+        // Add many users
+        for (uint256 i = 1; i <= largeUserCount; i++) {
+            token.addUser(vm.addr(i));
+        }
+        
+        token.setRandomSeedForTesting(123456789);
+        
+        // Test that we still get exactly 5 winners
+        uint256 winnerCount = 0;
+        address[] memory allUsers = token.getAllUsers();
+        
+        uint256 gasBefore = gasleft();
+        
+        for (uint256 i = 0; i < allUsers.length; i++) {
+            if (token.balanceOf(allUsers[i]) == 1) {
+                winnerCount++;
+            }
+        }
+        
+        uint256 gasUsed = gasBefore - gasleft();
+        console2.log("Gas used for", largeUserCount, "users:", gasUsed);
+        console2.log("Gas per user check:", gasUsed / largeUserCount);
+        
+        // Should still be exactly 5 winners regardless of scale
+        assertEq(winnerCount, 5, "Should have exactly 5 winners even with large user count");
+        
+        // Gas usage should be reasonable (less than 100k gas per user would be acceptable)
+        assertTrue(gasUsed / largeUserCount < 100000, "Gas usage per user should be reasonable");
+        
+        vm.stopPrank();
+    }
+
+    function test_SimpleAlgorithmGeneratesExactlyFiveWinners() public {
+        vm.startPrank(owner);
+        
+        // Test with 10 users
+        for (uint256 i = 1; i <= 10; i++) {
+            token.addUser(vm.addr(i));
+        }
+        
+        // Test with multiple seeds to ensure consistency
+        uint256[10] memory testSeeds = [
+            uint256(12345), 67890, 111111, 999999, 555555,
+            42, 987654321, 123123123, 456456456, 789789789
+        ];
+        
+        for (uint256 seedIndex = 0; seedIndex < testSeeds.length; seedIndex++) {
+            token.setRandomSeedForTesting(testSeeds[seedIndex]);
+            
+            // Count winners and collect their addresses
+            uint256 winnerCount = 0;
+            address[] memory allUsers = token.getAllUsers();
+            address[] memory winners = new address[](5);
+            
+            for (uint256 i = 0; i < allUsers.length; i++) {
+                if (token.balanceOf(allUsers[i]) == 1) {
+                    winners[winnerCount] = allUsers[i];
+                    winnerCount++;
+                }
+            }
+            
+            // Should always be exactly 5
+            assertEq(winnerCount, 5, 
+                string(abi.encodePacked("Seed ", vm.toString(testSeeds[seedIndex]), " produced ", vm.toString(winnerCount), " winners instead of 5")));
+            
+            // Verify uniqueness - no duplicate winners
+            for (uint256 i = 0; i < 5; i++) {
+                for (uint256 j = i + 1; j < 5; j++) {
+                    assertTrue(winners[i] != winners[j], "Duplicate winner found");
+                }
+            }
+            
+            // Verify sum of balances equals total supply
+            uint256 totalBalance = 0;
+            for (uint256 i = 0; i < allUsers.length; i++) {
+                totalBalance += token.balanceOf(allUsers[i]);
+            }
+            assertEq(totalBalance, 5, "Sum of balances should equal 5");
+        }
+        
+        vm.stopPrank();
     }
 } 

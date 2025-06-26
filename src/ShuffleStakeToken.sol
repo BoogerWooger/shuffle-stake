@@ -168,8 +168,11 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
             return 0;
         }
         
-        // Use shuffle-or-not algorithm to determine if user is a winner
-        return isWinner(user) ? 1 : 0;
+        // Get user's position in array (0-indexed)
+        uint256 userPos = userIndex[user] - 1;
+        
+        // Generate 5 unique pseudorandom indices and check if user is among them
+        return isUserInWinningIndices(userPos, currentRandomSeed, currentEpoch) ? 1 : 0;
     }
 
     /**
@@ -182,38 +185,48 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
             return false;
         }
         
-        // Use deterministic shuffle to select exactly 5 winners
-        uint256 userPos = userIndex[user] - 1; // Convert to 0-indexed
-        return isInWinningPositions(userPos, currentRandomSeed);
+        uint256 userPos = userIndex[user] - 1;
+        return isUserInWinningIndices(userPos, currentRandomSeed, currentEpoch);
     }
 
     /**
-     * @dev Check if a user position is in the winning positions using deterministic selection
+     * @dev Generate 5 unique pseudorandom indices and check if user is among them
      * @param userPos The user's position (0-indexed)
-     * @param seed Random seed
-     * @return True if the user is in a winning position
+     * @param seed Random seed from VRF
+     * @param epoch Current epoch number
+     * @return True if the user is one of the 5 selected winners
      */
-    function isInWinningPositions(uint256 userPos, uint256 seed) internal view returns (bool) {
-        // Use a deterministic approach to select exactly 5 unique positions
-        // We'll simulate a Fisher-Yates shuffle to get the first 5 positions
+    function isUserInWinningIndices(uint256 userPos, uint256 seed, uint256 epoch) internal view returns (bool) {
+        // Create epoch-dependent seed to ensure different results across epochs
+        uint256 epochSeed = uint256(keccak256(abi.encodePacked(seed, epoch, "SHUFFLE_STAKE_V1")));
         
-        uint256[] memory positions = new uint256[](userCount);
-        for (uint256 i = 0; i < userCount; i++) {
-            positions[i] = i;
-        }
+        // Generate 5 unique pseudorandom indices from [0, userCount-1]
+        uint256[5] memory winningIndices;
         
-        // Perform partial Fisher-Yates shuffle for the first 5 positions
-        for (uint256 i = 0; i < WINNERS_PER_EPOCH && i < userCount; i++) {
-            // Generate a random index from i to userCount-1
-            uint256 randomIndex = i + (uint256(keccak256(abi.encodePacked(seed, i))) % (userCount - i));
+        for (uint256 i = 0; i < TOTAL_SUPPLY; i++) {
+            uint256 randomIndex;
+            bool isUnique;
+            uint256 attempts = 0;
             
-            // Swap positions[i] with positions[randomIndex]
-            uint256 temp = positions[i];
-            positions[i] = positions[randomIndex];
-            positions[randomIndex] = temp;
+            // Generate unique index (with collision resolution)
+            do {
+                randomIndex = uint256(keccak256(abi.encodePacked(epochSeed, i, attempts))) % userCount;
+                isUnique = true;
+                
+                // Check if this index is already selected
+                for (uint256 j = 0; j < i; j++) {
+                    if (winningIndices[j] == randomIndex) {
+                        isUnique = false;
+                        attempts++;
+                        break;
+                    }
+                }
+            } while (!isUnique && attempts < 256); // Prevent infinite loop
             
-            // Check if this position matches our user
-            if (positions[i] == userPos) {
+            winningIndices[i] = randomIndex;
+            
+            // Check if this is our user's index
+            if (randomIndex == userPos) {
                 return true;
             }
         }
