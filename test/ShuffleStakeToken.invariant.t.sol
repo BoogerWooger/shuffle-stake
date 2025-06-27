@@ -65,7 +65,7 @@ contract ShuffleTokenInvariantTest is Test {
 
     // Invariant: Sum of all balances should equal total supply when randomness is available
     function invariant_SumOfBalancesEqualsTotalSupply() public view {
-        if (token.currentRandomSeed() == 0 || token.getUserCount() <= 5) {
+        if (token.getRandomSeedForEpoch(token.getCurrentEpoch()) == 0 || token.getUserCount() <= 5) {
             // No randomness or insufficient users, all balances should be 0
             uint256 sum = 0;
             address[] memory users = token.getAllUsers();
@@ -104,7 +104,7 @@ contract ShuffleTokenInvariantTest is Test {
 
     // Invariant: Number of winners should be exactly 5 when sufficient users and randomness
     function invariant_WinnerCountExactlyFive() public view {
-        if (token.currentRandomSeed() == 0 || token.getUserCount() <= 5) {
+        if (token.getRandomSeedForEpoch(token.getCurrentEpoch()) == 0 || token.getUserCount() <= 5) {
             return; // No randomness or insufficient users
         }
         
@@ -141,7 +141,7 @@ contract ShuffleTokenInvariantTest is Test {
 
     // Invariant: Current epoch should be non-negative
     function invariant_CurrentEpochNonNegative() public view {
-        assertGe(token.currentEpoch(), 0, "Current epoch is negative");
+        assertGe(token.getCurrentEpoch(), 0, "Current epoch is negative");
     }
 
     // Invariant: User count should match array length
@@ -166,23 +166,16 @@ contract ShuffleTokenInvariantTest is Test {
         assertEq(token.userIndex(nonUser), 0, "Non-user has non-zero index");
     }
 
-    // Invariant: Randomness requested flag should be consistent
-    function invariant_RandomnessRequestedConsistent() public view {
-        if (token.randomnessRequested()) {
-            assertEq(token.currentRandomSeed(), 0, "Randomness requested but seed is not 0");
-        }
-    }
-
     // Invariant: Epoch should not decrease
     function invariant_EpochNeverDecreases() public view {
-        uint256 currentEpoch = token.currentEpoch();
+        uint256 currentEpoch = token.getCurrentEpoch();
         uint256 expectedEpoch = block.timestamp / token.EPOCH_DURATION();
         assertGe(expectedEpoch, currentEpoch, "Epoch decreased");
     }
 
     // Invariant: Winners array should have correct length
     function invariant_WinnersArrayCorrectLength() public view {
-        if (token.currentRandomSeed() == 0 || token.getUserCount() <= 5) {
+        if (token.getRandomSeedForEpoch(token.getCurrentEpoch()) == 0 || token.getUserCount() <= 5) {
             address[] memory winners = token.getWinners();
             assertEq(winners.length, 0, "Winners array should be empty when no randomness or insufficient users");
         } else {
@@ -193,7 +186,7 @@ contract ShuffleTokenInvariantTest is Test {
 
     // Invariant: All winners should have balance 1
     function invariant_AllWinnersHaveBalanceOne() public view {
-        if (token.currentRandomSeed() == 0 || token.getUserCount() <= 5) {
+        if (token.getRandomSeedForEpoch(token.getCurrentEpoch()) == 0 || token.getUserCount() <= 5) {
             return; // No randomness or insufficient users
         }
         
@@ -205,7 +198,7 @@ contract ShuffleTokenInvariantTest is Test {
 
     // Invariant: Non-winners should have balance 0
     function invariant_NonWinnersHaveBalanceZero() public view {
-        if (token.currentRandomSeed() == 0 || token.getUserCount() <= 5) {
+        if (token.getRandomSeedForEpoch(token.getCurrentEpoch()) == 0 || token.getUserCount() <= 5) {
             return; // No randomness or insufficient users
         }
         
@@ -229,7 +222,7 @@ contract ShuffleTokenInvariantTest is Test {
 
     // Invariant: Winner selection should be deterministic within epoch
     function invariant_WinnerSelectionDeterministic() public view {
-        if (token.currentRandomSeed() == 0 || token.getUserCount() <= 5) {
+        if (token.getRandomSeedForEpoch(token.getCurrentEpoch()) == 0 || token.getUserCount() <= 5) {
             return; // No randomness or insufficient users
         }
         

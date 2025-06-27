@@ -46,7 +46,7 @@ contract InteractScript is Script {
         console2.log("Total Supply:", token.totalSupply());
         console2.log("Winners Per Epoch:", token.WINNERS_PER_EPOCH());
         console2.log("Epoch Duration:", token.EPOCH_DURATION());
-        console2.log("Current Epoch:", token.currentEpoch());
+        console2.log("Current Epoch:", token.getCurrentEpoch());
         console2.log("Owner:", token.owner());
         console2.log("User Count:", token.getUserCount());
         console2.log("Randomness Available:", token.isRandomnessAvailable());
@@ -87,7 +87,7 @@ contract InteractScript is Script {
         
         // For testing, use the test function to set randomness directly
         vm.startBroadcast(deployerPrivateKey);
-        token.setRandomSeedForTesting(123456789);
+        token.setRandomSeedForCurrentEpoch(123456789);
         vm.stopBroadcast();
         
         console2.log("Randomness set for testing. Seed: 123456789");
@@ -122,20 +122,20 @@ contract InteractScript is Script {
         console2.log("User1 balance after removal:", token.balanceOf(makeAddr("user1")));
         
         console2.log("\n=== Testing Epoch Change ===");
-        uint256 currentEpoch = token.currentEpoch();
+        uint256 currentEpoch = token.getCurrentEpoch();
         console2.log("Current epoch:", currentEpoch);
         
         // Simulate epoch change
         vm.warp(block.timestamp + token.EPOCH_DURATION());
         token.checkEpochChange();
         
-        console2.log("New epoch:", token.currentEpoch());
+        console2.log("New epoch:", token.getCurrentEpoch());
         console2.log("Randomness available after epoch change:", token.isRandomnessAvailable());
         
         console2.log("\n=== Final State ===");
         console2.log("Total Supply:", token.totalSupply());
         console2.log("User Count:", token.getUserCount());
-        console2.log("Current Epoch:", token.currentEpoch());
+        console2.log("Current Epoch:", token.getCurrentEpoch());
         console2.log("Randomness Available:", token.isRandomnessAvailable());
     }
 } 

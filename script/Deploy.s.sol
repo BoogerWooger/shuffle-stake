@@ -39,6 +39,7 @@ contract DeployScript is Script {
         console2.log("Winners per epoch:", token.WINNERS_PER_EPOCH());
         console2.log("Epoch duration:", token.EPOCH_DURATION());
         console2.log("Owner:", token.owner());
-        console2.log("Current epoch:", token.currentEpoch());
+        console2.log("Current epoch:", token.getCurrentEpoch());
+        console2.log("Current epoch has randomness:", token.isRandomnessAvailable());
     }
 } 

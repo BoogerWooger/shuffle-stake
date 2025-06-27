@@ -28,16 +28,13 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
     mapping(address => uint256) public userIndex; // 1-indexed, 0 means not in array
     uint256 public userCount;
     
-    // Epoch and randomness
-    uint256 public currentEpoch;
-    uint256 public currentRandomSeed;
-    bool public randomnessRequested;
+    // Epoch and randomness - store per epoch
+    mapping(uint256 => uint256) public randomSeeds; // epoch => randomSeed
     
     // Events
     event UserAdded(address indexed user);
     event UserRemoved(address indexed user);
     event EpochChanged(uint256 indexed epoch, uint256 randomSeed);
-    event RandomnessRequested(uint256 indexed requestId);
     event WinnersSelected(uint256 indexed epoch, address[] winners);
 
     constructor(
@@ -50,11 +47,6 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
         i_subscriptionId = subscriptionId;
         i_gasLane = gasLane;
         i_callbackGasLimit = callbackGasLimit;
-        
-        // Initialize first epoch
-        currentEpoch = getCurrentEpoch();
-        currentRandomSeed = 0;
-        randomnessRequested = false;
     }
 
     /**
@@ -107,20 +99,11 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
      * @dev Check if epoch has changed and request randomness if needed
      */
     function checkEpochChange() public {
-        uint256 newEpoch = getCurrentEpoch();
+        uint256 currentEpoch = getCurrentEpoch();
         
-        if (newEpoch > currentEpoch) {
-            // Epoch changed, reset state
-            currentEpoch = newEpoch;
-            currentRandomSeed = 0;
-            randomnessRequested = false;
-            
-            // Request new randomness only if we have more than TOTAL_SUPPLY users
-            if (userCount > TOTAL_SUPPLY) {
-                requestRandomness();
-            }
-            
-            emit EpochChanged(currentEpoch, currentRandomSeed);
+        // Check if we need randomness for current epoch
+        if (randomSeeds[currentEpoch] == 0 && userCount > TOTAL_SUPPLY) {
+            requestRandomness();
         }
     }
 
@@ -128,29 +111,27 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
      * @dev Request randomness from Chainlink VRF
      */
     function requestRandomness() internal {
-        require(!randomnessRequested, "Randomness already requested");
+        uint256 currentEpoch = getCurrentEpoch();
+        require(randomSeeds[currentEpoch] == 0, "Random seed already exists for this epoch");
         require(userCount > TOTAL_SUPPLY, "Need more than TOTAL_SUPPLY users");
         
-        randomnessRequested = true;
-        uint256 requestId = i_vrfCoordinator.requestRandomWords(
+        i_vrfCoordinator.requestRandomWords(
             i_gasLane,
             i_subscriptionId,
             REQUEST_CONFIRMATIONS,
             i_callbackGasLimit,
             NUM_WORDS
         );
-        
-        emit RandomnessRequested(requestId);
     }
 
     /**
      * @dev Callback function used by VRF Coordinator
      */
     function fulfillRandomWords(uint256 /* requestId */, uint256[] memory randomWords) internal override {
-        currentRandomSeed = randomWords[0];
-        randomnessRequested = false;
+        uint256 currentEpoch = getCurrentEpoch();
+        randomSeeds[currentEpoch] = randomWords[0];
         
-        emit EpochChanged(currentEpoch, currentRandomSeed);
+        emit EpochChanged(currentEpoch, randomWords[0]);
     }
 
     /**
@@ -159,12 +140,22 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
      * @return Balance of the user (0 or 1)
      */
     function balanceOf(address user) public view returns (uint256) {
+        return balanceOfAtEpoch(user, getCurrentEpoch());
+    }
+
+    /**
+     * @dev Get the balance of a user for a specific epoch
+     * @param user Address of the user
+     * @param epoch Epoch number to check
+     * @return Balance of the user (0 or 1)
+     */
+    function balanceOfAtEpoch(address user, uint256 epoch) public view returns (uint256) {
         if (userIndex[user] == 0 || userCount <= TOTAL_SUPPLY) {
             return 0;
         }
         
-        // Check if we have randomness for current epoch
-        if (currentRandomSeed == 0) {
+        // Check if we have randomness for this epoch
+        if (randomSeeds[epoch] == 0) {
             return 0;
         }
         
@@ -172,7 +163,7 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
         uint256 userPos = userIndex[user] - 1;
         
         // Generate 5 unique pseudorandom indices and check if user is among them
-        return isUserInWinningIndices(userPos, currentRandomSeed, currentEpoch) ? 1 : 0;
+        return isUserInWinningIndices(userPos, randomSeeds[epoch], epoch) ? 1 : 0;
     }
 
     /**
@@ -181,12 +172,22 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
      * @return True if user is a winner
      */
     function isWinner(address user) public view returns (bool) {
-        if (userIndex[user] == 0 || userCount <= TOTAL_SUPPLY || currentRandomSeed == 0) {
+        return isWinnerAtEpoch(user, getCurrentEpoch());
+    }
+
+    /**
+     * @dev Check if a user is a winner for a specific epoch
+     * @param user Address of the user to check
+     * @param epoch Epoch number to check
+     * @return True if user is a winner
+     */
+    function isWinnerAtEpoch(address user, uint256 epoch) public view returns (bool) {
+        if (userIndex[user] == 0 || userCount <= TOTAL_SUPPLY || randomSeeds[epoch] == 0) {
             return false;
         }
         
         uint256 userPos = userIndex[user] - 1;
-        return isUserInWinningIndices(userPos, currentRandomSeed, currentEpoch);
+        return isUserInWinningIndices(userPos, randomSeeds[epoch], epoch);
     }
 
     /**
@@ -239,7 +240,16 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
      * @return Array of winner addresses
      */
     function getWinners() external view returns (address[] memory) {
-        if (currentRandomSeed == 0 || userCount <= TOTAL_SUPPLY) {
+        return getWinnersForEpoch(getCurrentEpoch());
+    }
+
+    /**
+     * @dev Get all winners for a specific epoch
+     * @param epoch Epoch number to get winners for
+     * @return Array of winner addresses
+     */
+    function getWinnersForEpoch(uint256 epoch) public view returns (address[] memory) {
+        if (randomSeeds[epoch] == 0 || userCount <= TOTAL_SUPPLY) {
             return new address[](0);
         }
         
@@ -247,7 +257,7 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
         uint256 winnerCount = 0;
         
         for (uint256 i = 0; i < users.length && winnerCount < WINNERS_PER_EPOCH; i++) {
-            if (isWinner(users[i])) {
+            if (isWinnerAtEpoch(users[i], epoch)) {
                 winners[winnerCount] = users[i];
                 winnerCount++;
             }
@@ -307,7 +317,23 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
      * @dev Check if randomness is available for current epoch
      */
     function isRandomnessAvailable() external view returns (bool) {
-        return currentRandomSeed != 0;
+        return randomSeeds[getCurrentEpoch()] != 0;
+    }
+
+    /**
+     * @dev Check if randomness is available for a specific epoch
+     * @param epoch Epoch number to check
+     */
+    function isRandomnessAvailableForEpoch(uint256 epoch) external view returns (bool) {
+        return randomSeeds[epoch] != 0;
+    }
+
+    /**
+     * @dev Get random seed for a specific epoch
+     * @param epoch Epoch number
+     */
+    function getRandomSeedForEpoch(uint256 epoch) external view returns (uint256) {
+        return randomSeeds[epoch];
     }
 
     /**
@@ -320,12 +346,22 @@ contract ShuffleToken is Ownable, VRFConsumerBaseV2 {
     }
 
     /**
-     * @dev Set random seed directly (for testing only)
+     * @dev Set random seed directly for a specific epoch (for testing only)
+     * @param epoch Epoch number
      * @param seed The random seed to set
      */
-    function setRandomSeedForTesting(uint256 seed) external onlyOwner {
-        currentRandomSeed = seed;
-        randomnessRequested = false;
-        emit EpochChanged(currentEpoch, currentRandomSeed);
+    function setRandomSeedForTesting(uint256 epoch, uint256 seed) external onlyOwner {
+        randomSeeds[epoch] = seed;
+        emit EpochChanged(epoch, seed);
+    }
+
+    /**
+     * @dev Set random seed for current epoch (for testing only)
+     * @param seed The random seed to set
+     */
+    function setRandomSeedForCurrentEpoch(uint256 seed) external onlyOwner {
+        uint256 currentEpoch = getCurrentEpoch();
+        randomSeeds[currentEpoch] = seed;
+        emit EpochChanged(currentEpoch, seed);
     }
 } 
